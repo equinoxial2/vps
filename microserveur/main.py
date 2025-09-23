@@ -106,6 +106,12 @@ def place_order(payload: CommandRequest):
         order_payload["timeInForce"] = parsed.time_in_force or "GTC"
         order_payload["price"] = parsed.price
 
+    if parsed.callback is not None:
+        order_payload["callbackRate"] = parsed.callback
+
+    if parsed.activation_price is not None:
+        order_payload["activationPrice"] = parsed.activation_price
+
     try:
         response = client.create_order(**order_payload)
     except (BinanceAPIException, BinanceRequestException) as exc:
