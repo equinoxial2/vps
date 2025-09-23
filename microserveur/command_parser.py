@@ -17,6 +17,7 @@ class ParsedOrder:
     quantity: str
     price: Optional[str] = None
     time_in_force: Optional[str] = None
+    quote_asset: Optional[str] = None
 
     def dict(self) -> dict[str, Optional[str]]:
         return asdict(self)
@@ -95,6 +96,13 @@ def is_valid_candidate(candidate: str) -> bool:
         and candidate.isalnum()
         and any(candidate.endswith(suffix) for suffix in KNOWN_SYMBOL_SUFFIXES)
     )
+
+
+def detect_quote_asset(symbol: str) -> Optional[str]:
+    for suffix in sorted(KNOWN_SYMBOL_SUFFIXES, key=len, reverse=True):
+        if symbol.endswith(suffix):
+            return suffix
+    return None
 
 
 def decimal_to_str(value: Decimal) -> str:
@@ -196,6 +204,7 @@ def parse_trade_command(command: str) -> ParsedOrder:
         quantity=decimal_to_str(quantity),
         price=decimal_to_str(price) if price is not None else None,
         time_in_force="GTC" if order_type == "LIMIT" else None,
+        quote_asset=detect_quote_asset(symbol),
     )
 
 
