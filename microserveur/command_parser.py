@@ -69,6 +69,33 @@ ORDER_TYPE_KEYWORDS = {
 
 ORDER_KEYWORDS = set(SIDE_KEYWORDS.keys()) | set(ORDER_TYPE_KEYWORDS.keys())
 
+KNOWN_SYMBOL_SUFFIXES = {
+    "USDT",
+    "USDC",
+    "BUSD",
+    "TUSD",
+    "FDUSD",
+    "DAI",
+    "BTC",
+    "ETH",
+    "BNB",
+    "BIDR",
+    "EUR",
+    "GBP",
+    "TRY",
+    "BRL",
+    "AUD",
+    "PAXG",
+}
+
+
+def is_valid_candidate(candidate: str) -> bool:
+    return (
+        len(candidate) >= 5
+        and candidate.isalnum()
+        and any(candidate.endswith(suffix) for suffix in KNOWN_SYMBOL_SUFFIXES)
+    )
+
 
 def decimal_to_str(value: Decimal) -> str:
     quantized = value.normalize()
@@ -107,7 +134,7 @@ def extract_symbol(raw_tokens: list[str], keyword_tokens: list[str]) -> Optional
         if not any(char.isalpha() for char in cleaned):
             continue
         candidate = cleaned.upper()
-        if len(candidate) >= 5:
+        if is_valid_candidate(candidate):
             return candidate
     for idx in range(len(cleaned_tokens) - 1):
         first = cleaned_tokens[idx]
@@ -123,10 +150,9 @@ def extract_symbol(raw_tokens: list[str], keyword_tokens: list[str]) -> Optional
             continue
         if not any(char.isalpha() for char in first) or not any(char.isalpha() for char in second):
             continue
-        if 3 <= len(first) <= 5 and 3 <= len(second) <= 5:
-            candidate = f"{first}{second}".upper()
-            if len(candidate) >= 5:
-                return candidate
+        candidate = f"{first}{second}".upper()
+        if is_valid_candidate(candidate):
+            return candidate
     return None
 
 

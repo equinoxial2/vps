@@ -40,6 +40,24 @@ from command_parser import CommandParsingError, ParsedOrder, parse_trade_command
                 quantity="5",
             ),
         ),
+        (
+            "achète 1 op usdt",
+            ParsedOrder(
+                side="BUY",
+                symbol="OPUSDT",
+                order_type="MARKET",
+                quantity="1",
+            ),
+        ),
+        (
+            "vend 2 santos usdt",
+            ParsedOrder(
+                side="SELL",
+                symbol="SANTOSUSDT",
+                order_type="MARKET",
+                quantity="2",
+            ),
+        ),
     ],
 )
 def test_parse_trade_command_success(command: str, expected: ParsedOrder) -> None:
