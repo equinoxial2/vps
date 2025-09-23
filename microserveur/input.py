@@ -1,4 +1,5 @@
-from main import CommandParsingError, attendre_commande, parse_trade_command
+from command_parser import CommandParsingError, parse_trade_command
+from main import attendre_commande
 
 
 def main() -> None:

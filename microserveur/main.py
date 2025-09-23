@@ -1,5 +1,3 @@
-import re
-from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Optional
 
@@ -8,6 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from binance.client import Client
 from binance.exceptions import BinanceAPIException, BinanceRequestException
+
+from command_parser import CommandParsingError, ParsedOrder, parse_trade_command
 
 
 class Settings(BaseSettings):
@@ -34,113 +34,6 @@ class CommandRequest(BaseModel):
         if not value.strip():
             raise ValueError("Le texte de commande ne peut pas être vide.")
         return value
-
-
-class ParsedOrder(BaseModel):
-    side: str
-    symbol: str
-    order_type: str
-    quantity: str
-    price: Optional[str] = None
-    time_in_force: Optional[str] = None
-
-
-class CommandParsingError(Exception):
-    pass
-
-
-SIDE_KEYWORDS = {
-    "buy": "BUY",
-    "sell": "SELL",
-    "acheter": "BUY",
-    "vendre": "SELL",
-}
-
-ORDER_TYPE_KEYWORDS = {
-    "market": "MARKET",
-    "marche": "MARKET",
-    "limit": "LIMIT",
-    "limite": "LIMIT",
-}
-
-ORDER_KEYWORDS = set(SIDE_KEYWORDS.keys()) | set(ORDER_TYPE_KEYWORDS.keys())
-
-
-def decimal_to_str(value: Decimal) -> str:
-    quantized = value.normalize()
-    as_str = format(quantized, "f")
-    if "." in as_str:
-        as_str = as_str.rstrip("0").rstrip(".")
-    return as_str or "0"
-
-
-def extract_numbers(tokens: list[str]) -> list[Decimal]:
-    numbers = []
-    for token in tokens:
-        normalized = token.replace(",", ".")
-        try:
-            numbers.append(Decimal(normalized))
-        except InvalidOperation:
-            continue
-    return numbers
-
-
-def extract_symbol(raw_tokens: list[str]) -> Optional[str]:
-    cleaned_tokens = [re.sub(r"[^A-Za-z0-9]", "", token) for token in raw_tokens]
-    for cleaned in cleaned_tokens:
-        candidate = cleaned.upper()
-        if not candidate or candidate.lower() in ORDER_KEYWORDS:
-            continue
-        if len(candidate) >= 5:
-            return candidate
-    for idx in range(len(cleaned_tokens) - 1):
-        first = cleaned_tokens[idx].upper()
-        second = cleaned_tokens[idx + 1].upper()
-        if first.lower() in ORDER_KEYWORDS or second.lower() in ORDER_KEYWORDS:
-            continue
-        if 3 <= len(first) <= 4 and 3 <= len(second) <= 4:
-            return f"{first}{second}"
-    return None
-
-
-def parse_trade_command(command: str) -> ParsedOrder:
-    raw_tokens = command.strip().split()
-    lower_tokens = [token.lower() for token in raw_tokens]
-
-    side = next((SIDE_KEYWORDS[token] for token in lower_tokens if token in SIDE_KEYWORDS), None)
-    if not side:
-        raise CommandParsingError("Impossible de déterminer si l'ordre est un achat ou une vente.")
-
-    order_type = next((ORDER_TYPE_KEYWORDS[token] for token in lower_tokens if token in ORDER_TYPE_KEYWORDS), "MARKET")
-
-    symbol = extract_symbol(raw_tokens)
-    if not symbol:
-        raise CommandParsingError("Impossible de déterminer le symbole à trader.")
-
-    numbers = extract_numbers(raw_tokens)
-    if not numbers:
-        raise CommandParsingError("Impossible de déterminer la quantité à trader.")
-
-    quantity = numbers[0]
-    if quantity <= 0:
-        raise CommandParsingError("La quantité doit être supérieure à zéro.")
-
-    price: Optional[Decimal] = None
-    if order_type == "LIMIT":
-        if len(numbers) < 2:
-            raise CommandParsingError("Une commande limite nécessite un prix.")
-        price = numbers[1]
-        if price <= 0:
-            raise CommandParsingError("Le prix doit être supérieur à zéro.")
-
-    return ParsedOrder(
-        side=side,
-        symbol=symbol,
-        order_type=order_type,
-        quantity=decimal_to_str(quantity),
-        price=decimal_to_str(price) if price is not None else None,
-        time_in_force="GTC" if order_type == "LIMIT" else None,
-    )
 
 
 def create_client(use_testnet: bool) -> Client:
