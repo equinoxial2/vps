@@ -17,6 +17,9 @@ class ParsedOrder:
     quantity: str
     price: Optional[str] = None
     time_in_force: Optional[str] = None
+    quote_asset: Optional[str] = None
+    callback_rate: Optional[str] = None
+    activation_price: Optional[str] = None
 
     def dict(self) -> dict[str, Optional[str]]:
         return asdict(self)
@@ -49,6 +52,9 @@ RAW_ORDER_TYPE_KEYWORDS = {
     "marché": "MARKET",
     "limit": "LIMIT",
     "limite": "LIMIT",
+    "trailing": "TRAILING_STOP_MARKET",
+    "suiveur": "TRAILING_STOP_MARKET",
+    "suivi": "TRAILING_STOP_MARKET",
 }
 
 
@@ -95,6 +101,13 @@ def is_valid_candidate(candidate: str) -> bool:
         and candidate.isalnum()
         and any(candidate.endswith(suffix) for suffix in KNOWN_SYMBOL_SUFFIXES)
     )
+
+
+def detect_quote_asset(symbol: str) -> Optional[str]:
+    for suffix in sorted(KNOWN_SYMBOL_SUFFIXES, key=len, reverse=True):
+        if symbol.endswith(suffix):
+            return suffix
+    return None
 
 
 def decimal_to_str(value: Decimal) -> str:
@@ -182,12 +195,31 @@ def parse_trade_command(command: str) -> ParsedOrder:
         raise CommandParsingError("La quantité doit être supérieure à zéro.")
 
     price: Optional[Decimal] = None
+    callback_rate: Optional[Decimal] = None
+    activation_price: Optional[Decimal] = None
+
     if order_type == "LIMIT":
         if len(numbers) < 2:
             raise CommandParsingError("Une commande limite nécessite un prix.")
         price = numbers[1]
         if price <= 0:
             raise CommandParsingError("Le prix doit être supérieur à zéro.")
+    elif order_type == "TRAILING_STOP_MARKET":
+        if len(numbers) < 2:
+            raise CommandParsingError(
+                "Une commande trailing nécessite un callback rate (pourcentage de recul)."
+            )
+        callback_rate = numbers[1]
+        if callback_rate <= 0:
+            raise CommandParsingError(
+                "Le callback rate doit être supérieur à zéro pour un ordre trailing."
+            )
+        if len(numbers) >= 3:
+            activation_price = numbers[2]
+            if activation_price <= 0:
+                raise CommandParsingError(
+                    "Le prix d'activation doit être supérieur à zéro pour un ordre trailing."
+                )
 
     return ParsedOrder(
         side=side,
@@ -196,6 +228,11 @@ def parse_trade_command(command: str) -> ParsedOrder:
         quantity=decimal_to_str(quantity),
         price=decimal_to_str(price) if price is not None else None,
         time_in_force="GTC" if order_type == "LIMIT" else None,
+        quote_asset=detect_quote_asset(symbol),
+        callback_rate=decimal_to_str(callback_rate) if callback_rate else None,
+        activation_price=decimal_to_str(activation_price)
+        if activation_price is not None
+        else None,
     )
 
 

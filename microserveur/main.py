@@ -1,13 +1,15 @@
 from functools import lru_cache
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from binance.client import Client
 from binance.exceptions import BinanceAPIException, BinanceRequestException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
-from command_parser import CommandParsingError, ParsedOrder, parse_trade_command
+from command_parser import CommandParsingError, parse_trade_command
 
 
 class Settings(BaseSettings):
@@ -56,9 +58,30 @@ def attendre_commande() -> str:
 app = FastAPI()
 
 
+def success_response(message: str, data: Optional[dict] = None, status_code: int = 200) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "success", "message": message, "data": data},
+    )
+
+
+def error_response(status_code: int, message: str, data: Optional[dict] = None) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "error", "message": message, "data": data},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    return error_response(422, "Requête invalide.", {"errors": exc.errors()})
+
+
 @app.get("/")
 def read_root():
-    return {"status": "ready"}
+    return success_response("Service prêt.")
 
 
 @app.post("/orders")
@@ -66,7 +89,7 @@ def place_order(payload: CommandRequest):
     try:
         parsed = parse_trade_command(payload.command)
     except CommandParsingError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return error_response(400, str(exc))
 
     client = create_client(payload.testnet)
     order_payload = {
@@ -77,20 +100,41 @@ def place_order(payload: CommandRequest):
     }
     if parsed.order_type == "LIMIT":
         if parsed.price is None:
-            raise HTTPException(status_code=500, detail="Le prix de l'ordre limite est manquant après l'analyse.")
+            return error_response(
+                500, "Le prix de l'ordre limite est manquant après l'analyse."
+            )
         order_payload["timeInForce"] = parsed.time_in_force or "GTC"
         order_payload["price"] = parsed.price
+    elif parsed.order_type == "TRAILING_STOP_MARKET":
+        if parsed.callback_rate is None:
+            return error_response(
+                500,
+                "Le callback rate de l'ordre trailing est manquant après l'analyse.",
+            )
+        order_payload["callbackRate"] = parsed.callback_rate
+        if parsed.activation_price is not None:
+            order_payload["activationPrice"] = parsed.activation_price
 
     try:
         response = client.create_order(**order_payload)
     except (BinanceAPIException, BinanceRequestException) as exc:
-        raise HTTPException(status_code=502, detail=f"Erreur Binance : {exc.message}") from exc
+        error_details = {
+            "code": getattr(exc, "code", None),
+            "message": exc.message,
+        }
+        return error_response(502, "Erreur renvoyée par Binance.", error_details)
     except Exception as exc:  # pragma: no cover - unexpected errors
-        raise HTTPException(status_code=500, detail="Erreur inattendue lors de l'envoi de l'ordre.") from exc
+        return error_response(500, "Erreur inattendue lors de l'envoi de l'ordre.")
     finally:
         try:
             client.close_connection()
         except Exception:
             pass
 
-    return {"parsed_order": parsed.dict(), "binance_response": response}
+    return success_response(
+        "Ordre transmis avec succès.",
+        {
+            "parsed_order": parsed.dict(),
+            "binance_response": response,
+        },
+    )
