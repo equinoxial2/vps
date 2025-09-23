@@ -19,6 +19,7 @@ from command_parser import CommandParsingError, ParsedOrder, parse_trade_command
                 order_type="MARKET",
                 quantity="0.1",
                 quote_asset="USDT",
+                quote="USDT",
             ),
         ),
         (
@@ -31,6 +32,7 @@ from command_parser import CommandParsingError, ParsedOrder, parse_trade_command
                 price="2300",
                 time_in_force="GTC",
                 quote_asset="USDT",
+                quote="USDT",
             ),
         ),
         (
@@ -41,6 +43,7 @@ from command_parser import CommandParsingError, ParsedOrder, parse_trade_command
                 order_type="MARKET",
                 quantity="5",
                 quote_asset="USDT",
+                quote="USDT",
             ),
         ),
         (
@@ -51,6 +54,7 @@ from command_parser import CommandParsingError, ParsedOrder, parse_trade_command
                 order_type="MARKET",
                 quantity="1",
                 quote_asset="USDT",
+                quote="USDT",
             ),
         ),
         (
@@ -61,6 +65,7 @@ from command_parser import CommandParsingError, ParsedOrder, parse_trade_command
                 order_type="MARKET",
                 quantity="2",
                 quote_asset="USDT",
+                quote="USDT",
             ),
         ),
     ],
@@ -74,6 +79,7 @@ def test_parse_trade_command_detects_quote_with_separator() -> None:
     parsed = parse_trade_command("acheter 1 btc/usdt")
     assert parsed.symbol == "BTCUSDT"
     assert parsed.quote_asset == "USDT"
+    assert parsed.quote == "USDT"
 
 
 def test_parse_trade_command_requires_symbol() -> None:
@@ -89,3 +95,19 @@ def test_parse_trade_command_rejects_negative_quantity() -> None:
 def test_parse_trade_command_limit_requires_price() -> None:
     with pytest.raises(CommandParsingError):
         parse_trade_command("vendre 2 eth usdt limit")
+
+
+def test_parse_trade_command_extracts_callback_and_activation() -> None:
+    parsed = parse_trade_command("vend 3 btcusdt callback 1.5 activation 25000")
+    assert parsed.callback == "1.5"
+    assert parsed.activation_price == "25000"
+
+
+def test_parse_trade_command_rejects_negative_callback() -> None:
+    with pytest.raises(CommandParsingError):
+        parse_trade_command("acheter 1 btcusdt callback -1")
+
+
+def test_parse_trade_command_rejects_negative_activation_price() -> None:
+    with pytest.raises(CommandParsingError):
+        parse_trade_command("acheter 1 btcusdt activation -100")
